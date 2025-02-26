@@ -1,0 +1,49 @@
+import pandas as pd
+
+def load_data():
+    flights_df = pd.read_csv("flights_data.csv")
+    hotels_df = pd.read_csv("hotels_data.csv")
+    return flights_df, hotels_df
+
+def get_travel_cost(destination, economy=True):
+    flights_df, hotels_df = load_data()
+    
+    # Find the cheapest flight for the selected destination
+    flight = flights_df[flights_df["Destination"].str.lower() == destination.lower()]
+    if flight.empty:
+        print("No flight data available for this destination.")
+        return None
+    
+    flight_cost = flight["Economy Price ($)"].iloc[0] if economy else flight["Luxury Price ($)"].iloc[0]
+    
+    # Find the cheapest hotel for the selected destination
+    hotel = hotels_df[hotels_df["Destination"].str.lower() == destination.lower()]
+    if hotel.empty:
+        print("No hotel data available for this destination.")
+        return None
+    
+    hotel_cost = hotel["Economy Price ($/night)"].dropna().min() if economy else hotel["Luxury Price ($/night)"].dropna().min()
+    
+    return flight_cost, hotel_cost
+
+def calculate_expense(destination, num_nights, economy=True):
+    travel_costs = get_travel_cost(destination, economy)
+    
+    if travel_costs is None:
+        return
+    
+    flight_cost, hotel_cost = travel_costs
+    total_hotel_cost = hotel_cost * num_nights
+    total_trip_cost = flight_cost + total_hotel_cost
+    
+    print("\nEstimated Travel Expenses:")
+    print(f"Flight Cost: ${flight_cost}")
+    print(f"Hotel Cost (${hotel_cost}/night x {num_nights} nights): ${total_hotel_cost}")
+    print(f"Total Estimated Cost: ${total_trip_cost}")
+
+# User Input
+destination = input("Enter your destination: ")
+num_nights = int(input("Enter number of nights: "))
+economy = input("Economy or Luxury? (e/l): ").strip().lower() == 'e'
+
+calculate_expense(destination, num_nights, economy)
