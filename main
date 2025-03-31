@@ -1,160 +1,118 @@
 import pandas as pd
-import os
 import re
 
-# Load flights data with error handling
-def load_data():
-    file_path = "C:/Users/kgrac/Downloads/Updated_Flight_Data_Short.csv"
-    
-    if not os.path.exists(file_path):
-        print(f"DEBUG: File not found at {file_path}")
-        return None
+class TravelPlanner:
+    def __init__(self, data_source):
+        # Store the path to the CSV file and load the flight data into a DataFrame
+        self.data_source = data_source
+        self.flights_df = self.load_data()
 
-    try:
-        flights_df = pd.read_csv(file_path, dtype=str, low_memory=False)  # Read CSV with dtype=str
-        print("DEBUG: Flight data loaded successfully.")
-        return flights_df
-    except Exception as e:
-        print(f"DEBUG: Error loading file: {e}")
-        return None
+    def load_data(self):
+        # Attempt to load and clean the flight data
+        try:
+            df = pd.read_csv(self.data_source, dtype=str, low_memory=False)
+            df["fare_low"] = pd.to_numeric(df["fare_low"], errors="coerce")  # Ensure fare column is numeric
+            print("DEBUG: Flight data loaded successfully.")
+            return df
+        except Exception as e:
+            print(f"DEBUG: Error loading flight data: {e}")
+            return None
 
-# Function to safely match a user-entered city with multi-city records
-def match_city(user_city, df_column):
-    """ Returns True if the user_city is found within a multi-city entry, safely handling special characters. """
-    if pd.isna(user_city) or user_city.strip() == "":
-        return pd.Series(False, index=df_column.index)  # Return False for all if invalid input
-    safe_city = re.escape(user_city.strip().lower())  # Escape regex special characters
-    return df_column.str.lower().str.contains(safe_city, na=False)
+    def match_city(self, user_city, df_column):
+        # Returns a boolean Series where city names approximately match the user's input
+        if pd.isna(user_city) or user_city.strip() == "":
+            return pd.Series(False, index=df_column.index)
+        safe_city = re.escape(user_city.strip().lower())  # Escape special regex characters
+        return df_column.str.lower().str.contains(safe_city, na=False)  # Match city safely
 
-# Retrieve the best available flight (direct, one-stop, or multi-stop)
-def get_travel_cost(source, destination):
-    flights_df = load_data()
-    if flights_df is None:
-        return None, None, None
+    def get_travel_cost(self, source, destination):
+        # Compute travel cost between two cities, including direct and one-stop flights
+        if self.flights_df is None:
+            print("DEBUG: No flight data available.")
+            return None, None, None
 
-    required_columns = {"city1", "city2", "fare_low"}
-    if not required_columns.issubset(flights_df.columns):
-        print("DEBUG: CSV missing required columns:", flights_df.columns)
-        return None, None, None
+        source_clean = source.strip().lower()
+        destination_clean = destination.strip().lower()
+        df = self.flights_df
 
-    # Ensure 'fare_low' is numeric
-    flights_df["fare_low"] = pd.to_numeric(flights_df["fare_low"], errors='coerce')
+        # Try to find a direct flight
+        direct = df[self.match_city(source_clean, df["city1"]) & self.match_city(destination_clean, df["city2"])]
+        if not direct.empty:
+            print("DEBUG: Direct flight found.")
+            return direct["fare_low"].min(), None, None
 
-    # Standardize user input
-    source_clean = source.strip().lower()
-    destination_clean = destination.strip().lower()
+        # If no direct flight, look for a one-stop route
+        print("DEBUG: No direct flight found, searching for a one-stop connection...")
+        stops = df["city1"].dropna().unique()  # Get list of all departure cities
 
-    print(f"\nDEBUG: Searching for flights from '{source_clean}' to '{destination_clean}'")
-
-    # **Step 1: Check for Direct Flight**
-    direct_flight = flights_df[match_city(source_clean, flights_df["city1"]) & match_city(destination_clean, flights_df["city2"])]
-    
-    if not direct_flight.empty:
-        print("DEBUG: Direct flight found!")
-        return direct_flight["fare_low"].min(), None, None  # Direct flight found
-
-    print("DEBUG: No direct flight found, searching for a one-stop connection...")
-
-    # **Step 2: Try Finding a One-Stop Connection**
-    potential_stops = flights_df["city1"].dropna().unique()
-
-    for stopover in potential_stops:
-        stopover = str(stopover).strip().lower()
-        if stopover in {source_clean, destination_clean}:
-            continue  # Skip if city is source or destination
-
-        # Check for flights from source -> stopover
-        to_intermediate = flights_df[match_city(source_clean, flights_df["city1"]) & match_city(stopover, flights_df["city2"])]
-        # Check for flights from stopover -> destination
-        from_intermediate = flights_df[match_city(stopover, flights_df["city1"]) & match_city(destination_clean, flights_df["city2"])]
-
-        if not to_intermediate.empty and not from_intermediate.empty:
-            min_fare_to = to_intermediate["fare_low"].min()
-            min_fare_from = from_intermediate["fare_low"].min()
-            total_fare = min_fare_to + min_fare_from  # Sum fares for both segments
-
-            print(f"DEBUG: Found one-stop connection via '{stopover}' - Total fare: ${total_fare:.2f}")
-            return total_fare, stopover, True  # Immediately return the first valid connection!
-
-    print("DEBUG: No one-stop connections found, searching for a two-stop route...")
-
-    # **Step 3: Try Finding a Two-Stop Connection**
-    for stopover1 in potential_stops:
-        stopover1 = str(stopover1).strip().lower()
-        if stopover1 in {source_clean, destination_clean}:
-            continue
-
-        for stopover2 in potential_stops:
-            stopover2 = str(stopover2).strip().lower()
-            if stopover2 in {source_clean, destination_clean, stopover1}:
+        for stop in stops:
+            stop = str(stop).strip().lower()
+            if stop in {source_clean, destination_clean}:
                 continue
+            # Find flights from source → stop and stop → destination
+            to_stop = df[self.match_city(source_clean, df["city1"]) & self.match_city(stop, df["city2"])]
+            from_stop = df[self.match_city(stop, df["city1"]) & self.match_city(destination_clean, df["city2"])]
+            if not to_stop.empty and not from_stop.empty:
+                total_fare = to_stop["fare_low"].min() + from_stop["fare_low"].min()
+                print(f"DEBUG: One-stop flight found via {stop}")
+                return total_fare, stop, True
 
-            # Check for flights from source -> stopover1
-            to_first = flights_df[match_city(source_clean, flights_df["city1"]) & match_city(stopover1, flights_df["city2"])]
-            # Check for flights from stopover1 -> stopover2
-            first_to_second = flights_df[match_city(stopover1, flights_df["city1"]) & match_city(stopover2, flights_df["city2"])]
-            # Check for flights from stopover2 -> destination
-            second_to_dest = flights_df[match_city(stopover2, flights_df["city1"]) & match_city(destination_clean, flights_df["city2"])]
+        # If no routes found at all
+        print("DEBUG: No one-stop connection found.")
+        return None, None, False
 
-            if not to_first.empty and not first_to_second.empty and not second_to_dest.empty:
-                min_fare_to_first = to_first["fare_low"].min()
-                min_fare_first_to_second = first_to_second["fare_low"].min()
-                min_fare_second_to_dest = second_to_dest["fare_low"].min()
-                total_fare = min_fare_to_first + min_fare_first_to_second + min_fare_second_to_dest
+    def calculate_expense(self, source, destination, num_nights, return_flight):
+        # Calculates total estimated travel cost including hotel stays and optional return flight
+        outbound_cost, outbound_conn, outbound_has_conn = self.get_travel_cost(source, destination)
+        if outbound_cost is None:
+            print(f"DEBUG: No flights found from {source} to {destination}.")
+            return
 
-                print(f"DEBUG: Found two-stop connection via '{stopover1}' → '{stopover2}' - Total fare: ${total_fare:.2f}")
-                return total_fare, f"{stopover1} → {stopover2}", True  # Return the best two-stop connection
-
-    print("DEBUG: No suitable connections found.")
-    return None, None, False  # No flights found
-
-# Calculate and display estimated travel expenses (one-way or round-trip)
-def calculate_expense(source, destination, num_nights, return_flight):
-    # Outbound flight (source → destination)
-    outbound_flight_cost, outbound_connection, is_outbound_connection = get_travel_cost(source, destination)
-
-    if outbound_flight_cost is None:
-        print(f"\nDEBUG: No direct or connecting flights found from '{source}' to '{destination}'.")
-        return
-
-    # If return flight is needed, check for return flight (destination → source)
-    if return_flight:
-        return_flight_cost, return_connection, is_return_connection = get_travel_cost(destination, source)
-
-        if return_flight_cost is None:
-            print(f"\nDEBUG: No return flight found from '{destination}' to '{source}'. Proceeding with one-way trip.")
-            return_flight = False  # Disable return calculation if unavailable
+        # Check if return flight is needed and available
+        if return_flight:
+            return_cost, return_conn, return_has_conn = self.get_travel_cost(destination, source)
+            if return_cost is None:
+                print(f"DEBUG: No return flight found from {destination} to {source}. Proceeding one-way.")
+                return_flight = False
+                total_cost = outbound_cost
+            else:
+                total_cost = outbound_cost + return_cost
         else:
-            total_flight_cost = outbound_flight_cost + return_flight_cost
-    else:
-        total_flight_cost = outbound_flight_cost
+            total_cost = outbound_cost
 
-    hotel_cost_per_night = 100
-    total_hotel_cost = num_nights * hotel_cost_per_night
-    total_trip_cost = total_flight_cost + total_hotel_cost
+        # Calculate hotel and total trip costs
+        hotel_cost = num_nights * 100
+        trip_cost = total_cost + hotel_cost
 
-    print("\nEstimated Travel Expenses:")
-    
-    if is_outbound_connection:
-        print(f"Outbound Flight: {source} → {outbound_connection} → {destination} (1+ Stops)")
-    else:
-        print(f"Outbound Flight: {source} → {destination} (Direct)")
-
-    if return_flight:
-        if is_return_connection:
-            print(f"Return Flight: {destination} → {return_connection} → {source} (1+ Stops)")
+        # Output cost breakdown
+        print("\nEstimated Travel Expenses:")
+        if outbound_has_conn:
+            print(f"Outbound Flight: {source} → {outbound_conn} → {destination} (1+ Stops)")
         else:
-            print(f"Return Flight: {destination} → {source} (Direct)")
-        print(f"Total Flight Cost (Round-Trip): ${total_flight_cost:.2f} USD")
-    else:
-        print(f"Total Flight Cost (One-Way): ${total_flight_cost:.2f} USD")
+            print(f"Outbound Flight: {source} → {destination} (Direct)")
 
-    print(f"Hotel Cost (${hotel_cost_per_night}/night x {num_nights} nights): ${total_hotel_cost:.2f} USD")
-    print(f"Total Estimated Cost: ${total_trip_cost:.2f} USD")
+        if return_flight:
+            if return_has_conn:
+                print(f"Return Flight: {destination} → {return_conn} → {source} (1+ Stops)")
+            else:
+                print(f"Return Flight: {destination} → {source} (Direct)")
+            print(f"Total Flight Cost (Round-Trip): ${total_cost:.2f}")
+        else:
+            print(f"Total Flight Cost (One-Way): ${total_cost:.2f}")
 
-# User Input
-source = input("Enter your source city: ").strip()
-destination = input("Enter your destination city: ").strip()
-num_nights = int(input("Enter number of nights at destination: "))
-return_flight = input("Do you need a return flight? (yes/no): ").strip().lower() in ["yes", "y"]
-calculate_expense(source, destination, num_nights, return_flight)
+        print(f"Hotel Cost ($100/night x {num_nights} nights): ${hotel_cost:.2f}")
+        print(f"Total Estimated Cost: ${trip_cost:.2f}")
+
+# === CLI Interface ===
+if __name__ == "__main__":
+    file_path = "C:/Users/marc/Downloads/Updated_Flight_Data_Short.csv"
+    planner = TravelPlanner(file_path)
+
+    # Gather user input
+    source = input("Enter your source city: ").strip()
+    destination = input("Enter your destination city: ").strip()
+    nights = int(input("Enter number of nights at destination: ").strip())
+    return_trip = input("Do you need a return flight? (yes/no): ").strip().lower() in ["yes", "y"]
+
+    # Run cost calculation
+    planner.calculate_expense(source, destination, nights, return_trip)
