@@ -1,18 +1,20 @@
-import pandas as pd
-import re
-from datetime import datetime
-import sys
+# Import necessary libraries
+import pandas as pd           # For data manipulation and CSV reading
+import re                     # For regular expression matching
+from datetime import datetime # To generate timestamp for file export
+import sys                    # For system exit in case of fatal errors
 
 class TravelPlanner:
     def __init__(self, data_source):
         self.data_source = data_source
-        self.flights_df = self.load_data()
+        self.flights_df = self.load_data()  # Load flight data into a DataFrame
         if self.flights_df is None or self.flights_df.empty:
             print("ERROR: Flight data could not be loaded or is empty.")
-            sys.exit(1)
+            sys.exit(1)  # Stop program if no valid data
 
     def load_data(self):
         try:
+            # Load CSV file, convert fare column to numeric, and drop rows missing key fields
             df = pd.read_csv(self.data_source, dtype=str, low_memory=False)
             df["fare_low"] = pd.to_numeric(df["fare_low"], errors="coerce")
             print("DEBUG: Flight data loaded successfully.")
@@ -22,6 +24,7 @@ class TravelPlanner:
             return None
 
     def match_airport_or_city(self, user_input, df_city_col, df_airport_col):
+        # Return a boolean series matching input to either city or airport columns
         if pd.isna(user_input) or user_input.strip() == "":
             return pd.Series(False, index=df_city_col.index)
 
@@ -32,12 +35,14 @@ class TravelPlanner:
         return city_match | airport_match
 
     def suggest_cheapest_destinations(self, source, top_n=5):
+        # Suggest cheapest destinations from a given source location
         df = self.flights_df
         matches = df[self.match_airport_or_city(source, df["city1"], df["airport_1"])]
         if matches.empty:
             print(f"No flights found from '{source}'. Please check your input.")
             return False
 
+        # Group by destination and get minimum fare for each
         top_routes = matches.groupby("city2")["fare_low"].min().sort_values().head(top_n)
         print(f"\nTop {top_n} Cheapest Destinations from {source}:")
         for city, fare in top_routes.items():
@@ -45,24 +50,28 @@ class TravelPlanner:
         return True
 
     def get_travel_cost(self, source, destination):
+        # Get cheapest travel cost from source to destination, direct or with one connection
         df = self.flights_df
         source_clean = source.strip().lower()
         destination_clean = destination.strip().lower()
 
+        # Try to find a direct flight first
         direct = df[
             self.match_airport_or_city(source_clean, df["city1"], df["airport_1"]) &
             self.match_airport_or_city(destination_clean, df["city2"], df["airport_2"])
         ]
         if not direct.empty:
             cheapest = direct.loc[direct["fare_low"].idxmin()]
-            return cheapest["fare_low"], None, None
+            return cheapest["fare_low"], None, None  # No connection, direct flight
 
+        # Attempt connecting flights via a stopover
         stops = df["city1"].dropna().unique()
         for stop in stops:
             stop = str(stop).strip().lower()
             if stop in {source_clean, destination_clean}:
                 continue
 
+            # Split route into two legs via stop
             to_stop = df[
                 self.match_airport_or_city(source_clean, df["city1"], df["airport_1"]) &
                 self.match_airport_or_city(stop, df["city2"], df["airport_2"])
@@ -76,16 +85,18 @@ class TravelPlanner:
                 cheapest_to = to_stop.loc[to_stop["fare_low"].idxmin()]
                 cheapest_from = from_stop.loc[from_stop["fare_low"].idxmin()]
                 total_fare = cheapest_to["fare_low"] + cheapest_from["fare_low"]
-                return total_fare, stop, True
+                return total_fare, stop, True  # Return cost and stop info
 
-        return None, None, False
+        return None, None, False  # No route found
 
     def calculate_expense(self, source, destination, num_nights, return_flight, hotel_rate, max_budget=None):
+        # Calculate full trip cost including hotel, optionally validate against budget
         outbound_cost, outbound_conn, outbound_has_conn = self.get_travel_cost(source, destination)
         if outbound_cost is None:
             print(f"\nNo flights found from '{source}' to '{destination}'.")
             return
 
+        # Handle return flight if requested
         if return_flight:
             return_cost, return_conn, return_has_conn = self.get_travel_cost(destination, source)
             if return_cost is None:
@@ -100,6 +111,7 @@ class TravelPlanner:
         hotel_cost = num_nights * hotel_rate
         trip_cost = total_cost + hotel_cost
 
+        # Print trip summary
         print("\nEstimated Travel Expenses:")
         if outbound_has_conn:
             print(f"Outbound Flight: {source} → {outbound_conn} → {destination} (1+ Stops)")
@@ -118,6 +130,7 @@ class TravelPlanner:
         print(f"Hotel Cost (${hotel_rate:.2f}/night x {num_nights} nights): ${hotel_cost:.2f}")
         print(f"Total Estimated Cost: ${trip_cost:.2f}")
 
+        # Optional budget check
         if max_budget is not None:
             print(f"\nBudget Check (${max_budget:.2f} max):")
             if trip_cost > max_budget:
@@ -125,6 +138,7 @@ class TravelPlanner:
             else:
                 print(f"✅ Trip is within your budget! (${trip_cost:.2f} / ${max_budget:.2f})")
 
+        # Export option
         export = input("Would you like to export this summary to CSV? (yes/no): ").strip().lower()
         if export in ["yes", "y"]:
             filename = f"C:/Users/kgrac/Downloads/travel_summary_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
@@ -148,21 +162,23 @@ if __name__ == "__main__":
     file_path = "C:/Users/kgrac/Downloads/Updated_Flight_Data_Short.csv"
     planner = TravelPlanner(file_path)
 
+    # Prompt user for valid source location
     while True:
         source = input("Enter your source city or airport code: ").strip()
         if source and planner.suggest_cheapest_destinations(source):
             break
         print("Invalid source. Please try again.\n")
 
+    # Prompt for valid destination
     while True:
         destination = input("Enter your destination city or airport code: ").strip()
         if destination:
-            # Check if there are any flights TO the destination
             test_cost, _, _ = planner.get_travel_cost(source, destination)
             if test_cost is not None:
                 break
         print("Invalid destination or no flights available. Please try again.\n")
 
+    # Get number of nights from user
     while True:
         try:
             nights = int(input("Enter number of nights at destination: ").strip())
@@ -172,6 +188,7 @@ if __name__ == "__main__":
         except ValueError:
             print("Invalid input. Please enter a whole number.")
 
+    # Get hotel rate
     while True:
         try:
             hotel_rate = float(input("Enter your expected hotel cost per night ($): ").strip())
@@ -183,6 +200,7 @@ if __name__ == "__main__":
 
     return_trip = input("Do you need a return flight? (yes/no): ").strip().lower() in ["yes", "y"]
 
+    # Optional budget input
     while True:
         budget_input = input("Do you have a maximum budget? Enter amount or press Enter to skip: ").strip()
         if budget_input == "":
@@ -196,4 +214,5 @@ if __name__ == "__main__":
         except ValueError:
             print("Invalid input. Please enter a numeric value or leave blank.")
 
+    # Calculate and display total trip expenses
     planner.calculate_expense(source, destination, nights, return_trip, hotel_rate, max_budget)
