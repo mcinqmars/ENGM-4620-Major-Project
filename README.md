@@ -1,28 +1,46 @@
-# ENGM-4620-Major-Project
 Travel Expense Calculator
-
 Overview
-The Travel Expense Calculator is a Python-based tool that helps users estimate the cost of a trip, including flight expenses and hotel costs. It reads flight data from a CSV file and calculates the cheapest available travel route (direct, one-stop, or two-stop flights). The program then estimates accommodation costs and provides a total estimated travel expense.
+The Travel Expense Calculator is a Python-based tool that helps users estimate the total cost of a trip, including flight and hotel expenses. It reads flight data from a CSV file, identifies the cheapest available travel route (direct or with one stop), and computes the total cost based on user input.
 
 How It Works
-1.	User Input:
-  o	The user enters a departure city and destination city.
-  o	Specifies the number of nights for hotel accommodation.
-  o	Chooses whether a return flight is needed.
-2.	Flight Data Processing:
-  o	The program loads flight data from a CSV file.
-  o	Searches for the cheapest direct flight first.
-  o	If no direct flight is available, it attempts to find a one-stop connection.
-  o	If no one-stop flight is found, it searches for a two-stop connection.
-  o	If no flights are found, an error message is displayed.
-3.	Hotel Cost Calculation:
-  o	The script assumes a fixed rate of $100 per night for accommodation.
-  o	Multiplies the number of nights by the nightly rate to get the total hotel cost.
-4.	Expense Calculation and Display:
-  o	The total flight and hotel costs are calculated and displayed. 
-3. How to Use the Program
-  3.1 Requirements
-  Ensure the following are installed before running the script:
-    •	Python 3.x
-    •	pandas library (Install with pip install pandas)
-    •	CSV file containing flight data (Updated_Flight_Data_Short.csv)
+1. User Input
+The user provides:
+- A departure city or airport code
+- A destination city or airport code
+- The number of nights they plan to stay
+- The nightly hotel rate
+- Whether a return flight is required
+- An optional maximum budget
+
+2. Flight Data Processing
+The program reads flight data from a CSV file using pandas.
+
+It searches for:
+- The cheapest direct flight first
+- If unavailable, it checks for one-stop connections
+- Two-stop flights are not supported in the current version.
+- If no valid route is found, the user is informed with a clear error message.
+
+3. Hotel Cost Calculation
+Calculates hotel expenses by multiplying the number of nights by the provided nightly rate.
+Users can input any hotel rate; it is not fixed at $100.
+
+4. Expense Calculation and Display
+Summarizes:
+- Flight route(s) (including connection info)
+- Total flight cost (one-way or round-trip)
+- Total hotel cost
+- Final estimated travel expense
+- If a budget is provided, the tool checks whether the trip is within that limit.
+- Offers to export a summary of the trip to a CSV file.
+
+How to Use the Program
+Requirements:
+- Python 3.x
+- pandas library (Install with: pip install pandas)
+- A CSV file containing flight data (e.g., Updated_Flight_Data_Short.csv)
+
+Running the Program:
+- The script is designed to run as a standalone terminal/command-line application.
+- Follow the prompts to input trip details.
+- Review the output or export it as a CSV summary.
